@@ -3,7 +3,7 @@ import { IComponents } from "../types";
 
 const CardWrapper: FC<IComponents> = ({ children }) => {
     return (
-        <section className="rounded-xl p-5 w-4/5 text-white shadow-xl shadow-gray-950 bg-sky-900">
+        <section className="rounded-xl p-8 w-3/5 text-white shadow-xl shadow-gray-950 bg-sky-900">
             {children}
         </section>
     );

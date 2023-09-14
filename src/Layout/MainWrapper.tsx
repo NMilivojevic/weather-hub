@@ -3,7 +3,7 @@ import { IComponents } from "../types";
 
 const MainWrapper: FC<IComponents> = ({ children }) => {
     return (
-        <main className="flex justify-center items-center mt-10">
+        <main className="flex justify-center items-center mt-10 h-3/4">
             {children}
         </main>
     );

@@ -9,7 +9,7 @@ import precipitationIcon from "../assets/precipitation.png";
 
 const CurrentWeatherInfo: FC = () => {
     return (
-        <div className="grid grid-cols-3 grid-rows-2 gap-x-8 gap-y-11">
+        <div className="grid grid-cols-3 grid-rows-2 gap-x-8 gap-y-11 flex-auto">
             <div className="flex justify-start items-center gap-2">
                 <img src={tempIcon} className="w-10" />
                 <p className="text-2xl text-white">22&#8451;</p>
