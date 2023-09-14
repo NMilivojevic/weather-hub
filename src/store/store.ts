@@ -4,8 +4,6 @@ import currentWeatherReducer from "../features/currentWeather/currentWeatherSlic
 export const store = configureStore({
     reducer: {
         currentWeather: currentWeatherReducer,
-        // comments: commentsReducer,
-        // users: usersReducer,
     },
 });
 
