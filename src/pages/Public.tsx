@@ -10,26 +10,19 @@ import precipitationIcon from "../assets/precipitation.png";
 import { useAppDispatch, useAppSelector } from "../hooks/store";
 import {
     searchCity,
-    selectCurrentWeatherData,
-    setApiData,
-} from "../features/currentWeather/currentWeatherSlice";
-import { PayloadAction } from "@reduxjs/toolkit";
-import { ICurrentWeather } from "../types";
-import { format, parseISO } from "date-fns";
-
-interface DataFetcherProps {
-    searchUrlQuery: string;
-    dispatch: (action: PayloadAction<ICurrentWeather>) => void;
-}
-
-interface FormattedDateTime {
-    formattedDate: string;
-    formattedTime: string;
-}
+    selectWeatherData,
+    setForecastApiData,
+} from "../features/weather/weatherSlice";
+import { FormattedDateTime, ForecastDataFetcherProps } from "../types";
+import { format, isValid, parseISO } from "date-fns";
 
 const userFriendlyTime = (dateTimeString: string): FormattedDateTime | null => {
     try {
-        const date = parseISO(dateTimeString);
+        const processedDateTimeString = dateTimeString.replace(
+            /^(\d{4}-\d{2}-\d{2} )(\d:\d{2})$/,
+            "$10$2"
+        );
+        const date = parseISO(processedDateTimeString);
 
         if (!date || isNaN(date.getTime())) {
             throw new Error("Invalid date-time string");
@@ -37,6 +30,7 @@ const userFriendlyTime = (dateTimeString: string): FormattedDateTime | null => {
 
         const formattedDate = format(date, "MMMM dd, yyyy");
         const formattedTime = format(date, "HH:mm");
+
         return { formattedDate, formattedTime };
     } catch (error) {
         if (error instanceof Error) {
@@ -46,6 +40,20 @@ const userFriendlyTime = (dateTimeString: string): FormattedDateTime | null => {
     }
 };
 
+function getDayOfWeek(dateString: string): string | null {
+    if (!dateString || dateString.trim() === "") {
+        return null; // Return null for empty or whitespace-only strings
+    }
+
+    const date = parseISO(dateString);
+
+    if (!isValid(date)) {
+        return null; // Return null for invalid date strings
+    }
+
+    const dayOfWeek = format(date, "EEEE"); // 'EEEE' represents the full day of the week (e.g., 'Monday')
+    return dayOfWeek;
+}
 const getGreeting = (formattedTime: string): string => {
     const hour = parseInt(formattedTime.split(":")[0], 10);
 
@@ -58,7 +66,10 @@ const getGreeting = (formattedTime: string): string => {
     }
 };
 
-const DataFetcher: FC<DataFetcherProps> = ({ searchUrlQuery, dispatch }) => {
+const ForecastDataFetcher: FC<ForecastDataFetcherProps> = ({
+    searchUrlQuery,
+    dispatch,
+}) => {
     useEffect(() => {
         const fetchData = async () => {
             const url = searchUrlQuery;
@@ -73,13 +84,13 @@ const DataFetcher: FC<DataFetcherProps> = ({ searchUrlQuery, dispatch }) => {
             try {
                 const response = await fetch(url, options);
                 const result = await response.text();
-                dispatch(setApiData(JSON.parse(result)));
+                dispatch(setForecastApiData(JSON.parse(result)));
             } catch (error) {
                 console.error(error);
             }
         };
 
-        // fetchData();
+        fetchData();
     }, [searchUrlQuery, dispatch]);
 
     return null;
@@ -122,21 +133,14 @@ const SearchForm: FC = () => {
 };
 
 const WeatherInfo: FC = () => {
-    const currentWeather = useAppSelector(selectCurrentWeatherData);
+    const weather = useAppSelector(selectWeatherData);
+    const [showForecast, setShowForecast] = useState<boolean>(false);
 
-    const formattedDateTime = userFriendlyTime(
-        currentWeather?.location?.localtime
-    );
+    const formattedDateTime = userFriendlyTime(weather?.location?.localtime);
 
-    let greeting: string = "";
-
-    const feelsLike = currentWeather?.current?.feelslike_c;
-    const condtionText = currentWeather?.current?.condition?.text;
-    const conditionIcon = currentWeather?.current?.condition?.icon;
-
-    if (formattedDateTime) {
-        greeting = getGreeting(formattedDateTime?.formattedTime);
-    }
+    const greeting: string = formattedDateTime
+        ? getGreeting(formattedDateTime.formattedTime)
+        : "";
 
     const renderWeatherValue = (icon: string, value: string) => (
         <div className="flex justify-start items-center gap-2">
@@ -145,70 +149,120 @@ const WeatherInfo: FC = () => {
         </div>
     );
 
-    if (currentWeather.location.name === "") {
-        // Display a loading state here
+    const tabHandler = (tab: string) => {
+        setShowForecast(tab === "forecast");
+    };
+
+    if (weather.location.name === "") {
         return <p className="text-white text-2xl">Loading...</p>;
     }
 
     return (
         <section className="rounded-xl p-8 w-3/5 text-white shadow-xl shadow-gray-950 bg-sky-900">
             <h1 className="text-4xl text-center pb-4">
-                {currentWeather?.location?.name},{" "}
-                {currentWeather?.location?.country}
+                {weather?.location?.name}, {weather?.location?.country}
             </h1>
             <div className="w-full flex justify-start items-center gap-4 border-b-2 pb-3 border-sky-700">
-                <div className="p-2 bg-sky-700 hover:bg-blue-700 rounded-md cursor-pointer">
+                <div
+                    className={`p-2 bg-sky-700 hover:bg-blue-700 rounded-md cursor-pointer ${
+                        !showForecast ? "bg-blue-700" : ""
+                    }`}
+                    onClick={() => tabHandler("current")}
+                >
                     Current weather
                 </div>
-                {/* <div className="p-2 bg-sky-700 hover:bg-blue-700 rounded-md cursor-pointer">Forecast</div> */}
+                <div
+                    className={`p-2 bg-sky-700 hover:bg-blue-700 rounded-md cursor-pointer ${
+                        showForecast ? "bg-blue-700" : ""
+                    }`}
+                    onClick={() => tabHandler("forecast")}
+                >
+                    Forecast
+                </div>
             </div>
             <div className="py-8 flex justify-between items-center">
-                <div className="grid grid-cols-3 grid-rows-2 gap-x-8 gap-y-11 flex-auto">
-                    {renderWeatherValue(
-                        tempIcon,
-                        currentWeather?.current?.temp_c.toString() + " °C"
-                    )}
-                    {renderWeatherValue(
-                        windIcon,
-                        currentWeather?.current?.wind_kph.toString() + " kph"
-                    )}
-                    {renderWeatherValue(
-                        cloudIcon,
-                        currentWeather?.current?.cloud.toString()
-                    )}
-                    {renderWeatherValue(
-                        humidityIcon,
-                        currentWeather?.current?.humidity.toString() + " %"
-                    )}
-                    {renderWeatherValue(
-                        pressureIcon,
-                        currentWeather?.current?.pressure_mb.toString() + " mb"
-                    )}
-                    {renderWeatherValue(
-                        visibilityIcon,
-                        currentWeather?.current?.vis_km.toString() + " km"
-                    )}
-                    {renderWeatherValue(
-                        precipitationIcon,
-                        currentWeather?.current?.precip_mm.toString() + " mm"
-                    )}
-                </div>
-                <div className="border-l-2 border-sky-700 pl-4 flex flex-col items-center justify-start text-white gap-10 text-center flex-1">
-                    <div className="flex flex-col justify-center items-center text-center gap-3">
-                        <p className="text-xl">{greeting}</p>
-                        <div>
-                            <p>{formattedDateTime?.formattedDate}</p>
-                            <p>{formattedDateTime?.formattedTime}</p>
+                {!showForecast ? (
+                    <>
+                        <div className="grid grid-cols-3 grid-rows-2 gap-x-8 gap-y-11 flex-auto">
+                            {renderWeatherValue(
+                                tempIcon,
+                                `${weather?.current?.temp_c} °C`
+                            )}
+                            {renderWeatherValue(
+                                windIcon,
+                                `${weather?.current?.wind_kph} kph`
+                            )}
+                            {renderWeatherValue(
+                                cloudIcon,
+                                `${weather?.current?.cloud}`
+                            )}
+                            {renderWeatherValue(
+                                humidityIcon,
+                                `${weather?.current?.humidity} %`
+                            )}
+                            {renderWeatherValue(
+                                pressureIcon,
+                                `${weather?.current?.pressure_mb} mb`
+                            )}
+                            {renderWeatherValue(
+                                visibilityIcon,
+                                `${weather?.current?.vis_km} km`
+                            )}
+                            {renderWeatherValue(
+                                precipitationIcon,
+                                `${weather?.current?.precip_mm} mm`
+                            )}
                         </div>
-                    </div>
-                    <p className="text-md">Feels like: {feelsLike} °C</p>
-                    <div className="flex flex-col justify-center items-center">
-                        <p className="text-3xl">{condtionText}</p>
-                        <div>
-                            <img src={conditionIcon} />
+                        <div className="border-l-2 border-sky-700 pl-4 flex flex-col items-center justify-start text-white gap-10 text-center flex-1">
+                            <div className="flex flex-col justify-center items-center text-center gap-3">
+                                <p className="text-xl">{greeting}</p>
+                                <div>
+                                    <p>{formattedDateTime?.formattedDate}</p>
+                                    <p>{formattedDateTime?.formattedTime}</p>
+                                </div>
+                            </div>
+                            <p className="text-md">
+                                Feels like: {weather?.current?.feelslike_c} °C
+                            </p>
+                            <div className="flex flex-col justify-center items-center">
+                                <p className="text-3xl">
+                                    {weather?.current?.condition?.text}
+                                </p>
+                                <div>
+                                    <img
+                                        src={weather?.current?.condition?.icon}
+                                        alt="Weather Icon"
+                                    />
+                                </div>
+                            </div>
                         </div>
+                    </>
+                ) : (
+                    <div className="flex justify-between items-center w-full">
+                        {weather?.forecast?.forecastday
+                            .slice(0, 3)
+                            .map((item, index) => (
+                                <div
+                                    key={index}
+                                    className="flex flex-col justify-center items-center gap-1"
+                                >
+                                    <p className="font-bold">
+                                        {getDayOfWeek(item.date)}
+                                    </p>
+                                    <img
+                                        src={item.day.condition.icon}
+                                        alt="Weather Icon"
+                                    />
+                                    <div className="flex justify-center items-center gap-1">
+                                        <p className="text-md">{`${item.day.maxtemp_c} °C`}</p>
+                                        <p>/</p>
+                                        <p className="text-sm text-slate-300">{`${item.day.mintemp_c} °C`}</p>
+                                    </div>
+                                    <p>{item.day.condition.text}</p>
+                                </div>
+                            ))}
                     </div>
-                </div>
+                )}
             </div>
         </section>
     );
@@ -216,13 +270,18 @@ const WeatherInfo: FC = () => {
 
 const Public: FC = () => {
     const dispatch = useAppDispatch();
-    const currentWeather = useAppSelector(selectCurrentWeatherData);
-    const searchCity = currentWeather?.location?.name || "Niš";
-    const searchUrlQuery = import.meta.env.VITE_X_RAPIDAPI_Url + searchCity;
+    const weather = useAppSelector(selectWeatherData);
+
+    const searchCity = weather?.location?.name || "Niš";
+    const searchUrlQuery =
+        import.meta.env.VITE_X_RAPIDAPI_Forecast_Url + searchCity + "&days=3";
 
     return (
         <>
-            <DataFetcher searchUrlQuery={searchUrlQuery} dispatch={dispatch} />
+            <ForecastDataFetcher
+                searchUrlQuery={searchUrlQuery}
+                dispatch={dispatch}
+            />
             <div className="h-screen w-full dark:bg-gray-900">
                 <header>
                     <nav className="dark:bg-gray-800 flex justify-center items-center text-white py-5">
