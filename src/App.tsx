@@ -1,7 +1,9 @@
 import { FC } from "react";
 
+import Public from "./pages/Public";
+
 const App: FC = () => {
-    return <h1 className="text-3xl font-bold underline">Hello</h1>;
+    return <Public />;
 };
 
 export default App;
