@@ -7,6 +7,7 @@
 -   Redux Toolkit: state managment
 -   ESLint: linting
 -   Firebase: Auth and data storage
+-   WeatherAPI: weather api of choice
 
 **Firebase flow**
 
