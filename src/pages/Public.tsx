@@ -53,16 +53,6 @@ import {
 } from "../features/user/userSlice";
 import { subscribeToAuthState } from "../firebase/authService";
 
-const icons = {
-    temp: tempIcon,
-    wind: windIcon,
-    humidity: humidityIcon,
-    cloud: cloudIcon,
-    pressure: pressureIcon,
-    visibility: visibilityIcon,
-    precipitation: precipitationIcon,
-};
-
 const userFriendlyTime = (dateTimeString: string): FormattedDateTime | null => {
     try {
         const processedDateTimeString = dateTimeString.replace(
