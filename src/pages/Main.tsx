@@ -417,7 +417,7 @@ const WeatherInfo: FC<WeatherInfoProps> = ({ notFound }) => {
     );
 };
 
-const Public: FC = () => {
+const Main: FC = () => {
     const dispatchWeather = useAppDispatch();
     const weather = useAppSelector(selectWeather);
     const [notFound, setNotFound] = useState<boolean>(true);
@@ -746,4 +746,4 @@ const Public: FC = () => {
     );
 };
 
-export default Public;
+export default Main;

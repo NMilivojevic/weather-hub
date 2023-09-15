@@ -1,9 +1,9 @@
 import { FC } from "react";
 
-import Public from "./pages/Public";
+import Main from "./pages/Main";
 
 const App: FC = () => {
-    return <Public />;
+    return <Main />;
 };
 
 export default App;
