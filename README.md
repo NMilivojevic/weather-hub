@@ -4,7 +4,7 @@
 -   React: framework of choice
 -   Vite: development environment
 -   Tailwind: styling
--   Redux Toolkit: state managment
+-   Redux Toolkit: state management
 -   ESLint: linting
 -   Firebase: Auth and data storage
 -   WeatherAPI: weather api of choice
