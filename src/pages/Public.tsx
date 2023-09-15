@@ -495,6 +495,7 @@ const Public: FC = () => {
             };
             await setDoc(doc(db, "Users", response.user.uid), DocumentObj);
             setOpenAuthModal(false);
+            window.location.reload();
         } catch (error) {
             const err = error as FirebaseError;
             console.log(err.code);
