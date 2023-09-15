@@ -160,3 +160,18 @@ interface FormattedDateTime {
 interface ForecastDay {
     date: string;
 }
+
+interface FirebaseConfig {
+    apiKey: string;
+    authDomain: string;
+    projectId: string;
+    storageBucket: string;
+    messagingSenderId: string;
+    appId: string;
+}
+
+interface UserBasic {
+    uid: string;
+    displayName: string;
+    email: string;
+}

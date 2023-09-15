@@ -1,4 +1,11 @@
-import { ChangeEvent, FC, useEffect, useState } from "react";
+import {
+    ChangeEvent,
+    FC,
+    FormEvent,
+    MouseEvent,
+    useEffect,
+    useState,
+} from "react";
 import tempIcon from "../assets/temp.png";
 import windIcon from "../assets/wind.png";
 import humidityIcon from "../assets/humidity.png";
@@ -13,8 +20,28 @@ import {
     selectWeatherData,
     setForecastApiData,
 } from "../features/weather/weatherSlice";
-import { FormattedDateTime, ForecastDataFetcherProps } from "../types";
+import {
+    FormattedDateTime,
+    ForecastDataFetcherProps,
+    UserBasic,
+} from "../types";
 import { format, isValid, parseISO } from "date-fns";
+import {
+    UserCredential,
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+    signOut,
+    updateProfile,
+} from "firebase/auth";
+import { auth, db } from "../firebase/firebase";
+import { doc, setDoc } from "firebase/firestore";
+import { FirebaseError } from "firebase/app";
+import {
+    selectUser,
+    setLoginStatus,
+    setUser,
+} from "../features/user/userSlice";
+import { subscribeToAuthState } from "../firebase/authService";
 
 const userFriendlyTime = (dateTimeString: string): FormattedDateTime | null => {
     try {
@@ -90,7 +117,7 @@ const ForecastDataFetcher: FC<ForecastDataFetcherProps> = ({
             }
         };
 
-        fetchData();
+        // fetchData();
     }, [searchUrlQuery, dispatch]);
 
     return null;
@@ -110,13 +137,14 @@ const SearchForm: FC = () => {
     };
 
     return (
-        <div className="w-full flex justify-center items-center gap-5">
+        <div className="flex justify-center items-center gap-5">
             <input
                 type="text"
                 name="search"
                 id="search"
                 placeholder="Lookup weather for a specific city..."
-                className="p-2 rounded-md w-2/6 focus:outline-none focus-visible:ring text-slate-900"
+                className="p-2 rounded-md focus:outline-none focus-visible:ring text-slate-900"
+                style={{ width: "300px" }}
                 value={searchValue}
                 onChange={handleChange}
             />
@@ -269,25 +297,293 @@ const WeatherInfo: FC = () => {
 };
 
 const Public: FC = () => {
-    const dispatch = useAppDispatch();
+    const dispatchWeather = useAppDispatch();
     const weather = useAppSelector(selectWeatherData);
 
     const searchCity = weather?.location?.name || "Niš";
     const searchUrlQuery =
         import.meta.env.VITE_X_RAPIDAPI_Forecast_Url + searchCity + "&days=3";
 
+    const [openAuthModal, setOpenAuthModal] = useState<boolean>(false);
+    const [showLogin, setShowLogin] = useState<boolean>(false);
+    const [error, setError] = useState<string>("");
+
+    const dispatchUser = useAppDispatch();
+    const user = useAppSelector(selectUser);
+
+    console.log(user);
+
+    useEffect(() => {
+        // Subscribe to authentication state changes
+        const unsubscribe = subscribeToAuthState(
+            (authUser) => {
+                // setIsLoading(false);
+                dispatchUser(setUser(authUser));
+                dispatchUser(setLoginStatus(!!authUser));
+            },
+            (error) => {
+                console.error("Authentication error:", error);
+            }
+        );
+
+        // Cleanup the subscription when the component unmounts
+        return () => {
+            unsubscribe();
+        };
+    }, [dispatchUser]);
+
+    const handleAuthModal = () => {
+        setOpenAuthModal((prev) => !prev);
+    };
+
+    const loginHandler = () => {
+        setShowLogin((prev) => !prev);
+    };
+
+    const backdropClick = (e: MouseEvent<HTMLDivElement>) => {
+        if (e.target === e.currentTarget) {
+            setOpenAuthModal(false);
+        }
+    };
+
+    const handleSignUp = async (e: FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        const displayName: string = (e.currentTarget[0] as HTMLInputElement)
+            ?.value;
+        const email: string = (e.currentTarget[1] as HTMLInputElement)?.value;
+        const password: string = (e.currentTarget[2] as HTMLInputElement)
+            ?.value;
+
+        try {
+            const response: UserCredential =
+                await createUserWithEmailAndPassword(auth, email, password);
+            await updateProfile(response.user, { displayName });
+
+            const DocumentObj: UserBasic = {
+                uid: response.user.uid,
+                displayName,
+                email,
+            };
+            await setDoc(doc(db, "Users", response.user.uid), DocumentObj);
+            setOpenAuthModal(false);
+        } catch (error) {
+            const err = error as FirebaseError;
+            console.log(err.code);
+            console.log(err.message);
+            if (err.code === "auth/email-already-in-use") {
+                setError("Email already in use.");
+            }
+            if (err.code === "auth/weak-password") {
+                setError("Provide a password with minimum 6 characters.");
+            }
+            setTimeout(() => {
+                setError("");
+            }, 5000);
+        }
+    };
+
+    const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        const email: string = (e.currentTarget[0] as HTMLInputElement)?.value;
+        const password: string = (e.currentTarget[1] as HTMLInputElement)
+            ?.value;
+
+        try {
+            await signInWithEmailAndPassword(auth, email, password);
+            setOpenAuthModal(false);
+        } catch (error) {
+            const err = error as FirebaseError;
+            console.log(err.code);
+            console.log(err.message);
+            if (err.code === "auth/invalid-login-credentials") {
+                setError("Invalid login credentials.");
+            }
+            setTimeout(() => {
+                setError("");
+            }, 5000);
+        }
+    };
+
+    const handleLogout = async (): Promise<void> => {
+        try {
+            await signOut(auth);
+        } catch (error) {
+            if (error instanceof Error) {
+                console.error(error);
+            }
+        }
+    };
+
     return (
         <>
+            {openAuthModal ? (
+                <div
+                    className="absolute h-full w-full top-0 left-0"
+                    style={{ background: "rgba(0,0,0,0.5" }}
+                    onClick={backdropClick}
+                >
+                    {error !== "" ? (
+                        <div
+                            className="absolute text-white bg-red-600 text-center rounded-md flex justify-center items-center p-3"
+                            style={{
+                                top: "10px",
+                                left: "50%",
+                                transform: "translateX(-50%)",
+                                width: "400px",
+                            }}
+                        >
+                            {error}
+                        </div>
+                    ) : null}
+                    {!showLogin ? (
+                        <div
+                            className="absolute bg-white rounded-md p-5 w-2/6"
+                            style={{
+                                top: "50%",
+                                left: "50%",
+                                transform: "translate(-50%, -50%)",
+                            }}
+                        >
+                            <div className="flex flex-col justify-center items-center gap-3">
+                                <form
+                                    className="flex flex-col justify-center items-center gap-4"
+                                    onSubmit={(e) => void handleSignUp(e)}
+                                >
+                                    <input
+                                        className="w-full p-3 rounded-md border-2 focus:outline-none hover:border-gray-800 bg-gray-300"
+                                        required
+                                        type="text"
+                                        placeholder="Username"
+                                    />
+                                    <input
+                                        className="w-full p-3 rounded-md border-2 focus:outline-none hover:border-gray-800 bg-gray-300"
+                                        required
+                                        type="Email"
+                                        placeholder="Email"
+                                    />
+                                    <div>
+                                        <input
+                                            className="w-full p-3 rounded-md border-2 focus:outline-none hover:border-gray-800 bg-gray-300"
+                                            required
+                                            type="password"
+                                            placeholder="Password"
+                                        />
+                                        <p className="text-sm text-gray-600">
+                                            (minimum 6 characters)
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="submit"
+                                        role="button"
+                                        className="bg-slate-900 px-6 py-2 rounded-md hover:bg-slate-700 text-white"
+                                    >
+                                        Sign up
+                                    </button>
+                                </form>
+                                <p>
+                                    Already have an account?{" "}
+                                    <button
+                                        role="button"
+                                        type="button"
+                                        className="font-bold hover:underline cursor-pointer"
+                                        onClick={loginHandler}
+                                    >
+                                        Log In
+                                    </button>
+                                </p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div
+                            className="absolute bg-white rounded-md p-5 w-2/6"
+                            style={{
+                                top: "50%",
+                                left: "50%",
+                                transform: "translate(-50%, -50%)",
+                            }}
+                        >
+                            <div className="flex flex-col justify-center items-center gap-3">
+                                <form
+                                    className="flex flex-col justify-center items-center gap-4"
+                                    onSubmit={(e) => void handleLogin(e)}
+                                >
+                                    <input
+                                        className="w-full p-3 rounded-md border-2 focus:outline-none hover:border-gray-800 bg-gray-300"
+                                        required
+                                        type="Email"
+                                        placeholder="email"
+                                    />
+                                    <div>
+                                        <input
+                                            className="w-full p-3 rounded-md border-2 focus:outline-none hover:border-gray-800 bg-gray-300"
+                                            required
+                                            type="password"
+                                            placeholder="Password"
+                                        />
+                                    </div>
+                                    <button
+                                        type="submit"
+                                        role="button"
+                                        className="bg-slate-900 px-6 py-2 rounded-md hover:bg-slate-700 text-white"
+                                    >
+                                        Log In
+                                    </button>
+                                </form>
+                                <p>
+                                    Don't have an account?{" "}
+                                    <button
+                                        role="button"
+                                        type="button"
+                                        className="font-bold hover:underline cursor-pointer"
+                                        onClick={loginHandler}
+                                    >
+                                        Sign Up
+                                    </button>
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            ) : null}
             <ForecastDataFetcher
                 searchUrlQuery={searchUrlQuery}
-                dispatch={dispatch}
+                dispatch={dispatchWeather}
             />
             <div className="h-screen w-full dark:bg-gray-900">
                 <header>
-                    <nav className="dark:bg-gray-800 flex justify-center items-center text-white py-5">
+                    <nav className="dark:bg-gray-800 flex justify-around items-center text-white py-5">
+                        <h1 className="font-bold text-3xl">Weather Hub</h1>
                         <SearchForm />
+                        {user?.loginStatus ? (
+                            <div className="flex justify-center items-center gap-5">
+                                <p>Welcome, {user?.user?.displayName}</p>
+                                <button
+                                    role="button"
+                                    type="button"
+                                    className="font-bold hover:underline cursor-pointer"
+                                    onClick={handleLogout}
+                                >
+                                    Logout
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                role="button"
+                                type="button"
+                                className="font-bold hover:underline cursor-pointer"
+                                onClick={handleAuthModal}
+                            >
+                                Sign up
+                            </button>
+                        )}
                     </nav>
                 </header>
+                <section className="flex justify-center items-center mt-10 text-white">
+                    <p className="text-2xl">
+                        Sign up to save weather insights for your favorite
+                        cities.
+                    </p>
+                </section>
                 <main className="flex justify-center items-center mt-10">
                     <WeatherInfo />
                 </main>
