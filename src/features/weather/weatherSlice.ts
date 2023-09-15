@@ -148,6 +148,6 @@ export const weatherSlice = createSlice({
 
 export const { searchCity, setForecastApiData } = weatherSlice.actions;
 
-export const selectWeatherData = (state: RootState) => state.weather;
+export const selectWeather = (state: RootState) => state.weather;
 
 export default weatherSlice.reducer;

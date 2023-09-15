@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { Dispatch, ReactNode, SetStateAction } from "react";
 
 interface Components {
     children: ReactNode;
@@ -150,6 +150,7 @@ interface Condition3 {
 interface ForecastDataFetcherProps {
     searchUrlQuery: string;
     dispatch: (action: PayloadAction<Weather>) => void;
+    setNotFound: Dispatch<SetStateAction<boolean>>;
 }
 
 interface FormattedDateTime {
@@ -174,4 +175,9 @@ interface UserBasic {
     uid: string;
     displayName: string;
     email: string;
+    savedCities: string[];
+}
+
+interface WeatherInfoProps {
+    notFound: boolean;
 }

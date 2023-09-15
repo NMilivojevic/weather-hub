@@ -2,6 +2,7 @@ import {
     ChangeEvent,
     FC,
     FormEvent,
+    KeyboardEvent,
     MouseEvent,
     useEffect,
     useState,
@@ -17,13 +18,14 @@ import precipitationIcon from "../assets/precipitation.png";
 import { useAppDispatch, useAppSelector } from "../hooks/store";
 import {
     searchCity,
-    selectWeatherData,
+    selectWeather,
     setForecastApiData,
 } from "../features/weather/weatherSlice";
 import {
     FormattedDateTime,
     ForecastDataFetcherProps,
     UserBasic,
+    WeatherInfoProps,
 } from "../types";
 import { format, isValid, parseISO } from "date-fns";
 import {
@@ -34,14 +36,32 @@ import {
     updateProfile,
 } from "firebase/auth";
 import { auth, db } from "../firebase/firebase";
-import { doc, setDoc } from "firebase/firestore";
+import {
+    arrayRemove,
+    arrayUnion,
+    doc,
+    getDoc,
+    setDoc,
+    updateDoc,
+} from "firebase/firestore";
 import { FirebaseError } from "firebase/app";
 import {
+    loginUser,
+    logoutUser,
+    saveCity,
     selectUser,
-    setLoginStatus,
-    setUser,
 } from "../features/user/userSlice";
 import { subscribeToAuthState } from "../firebase/authService";
+
+const icons = {
+    temp: tempIcon,
+    wind: windIcon,
+    humidity: humidityIcon,
+    cloud: cloudIcon,
+    pressure: pressureIcon,
+    visibility: visibilityIcon,
+    precipitation: precipitationIcon,
+};
 
 const userFriendlyTime = (dateTimeString: string): FormattedDateTime | null => {
     try {
@@ -96,6 +116,7 @@ const getGreeting = (formattedTime: string): string => {
 const ForecastDataFetcher: FC<ForecastDataFetcherProps> = ({
     searchUrlQuery,
     dispatch,
+    setNotFound,
 }) => {
     useEffect(() => {
         const fetchData = async () => {
@@ -111,14 +132,21 @@ const ForecastDataFetcher: FC<ForecastDataFetcherProps> = ({
             try {
                 const response = await fetch(url, options);
                 const result = await response.text();
-                dispatch(setForecastApiData(JSON.parse(result)));
+                if (response.ok) {
+                    dispatch(setForecastApiData(JSON.parse(result)));
+                    setNotFound(false);
+                } else {
+                    setNotFound(true);
+                }
             } catch (error) {
+                console.log("test");
+                setNotFound(true);
                 console.error(error);
             }
         };
 
-        // fetchData();
-    }, [searchUrlQuery, dispatch]);
+        fetchData();
+    }, [dispatch, searchUrlQuery, setNotFound]);
 
     return null;
 };
@@ -129,6 +157,14 @@ const SearchForm: FC = () => {
 
     const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
         setSearchValue(e.currentTarget.value);
+    };
+
+    const handleSearchWithEnter = async (
+        e: KeyboardEvent<HTMLInputElement>
+    ): Promise<void> => {
+        if (e.code === "Enter") {
+            handleSearch();
+        }
     };
 
     const handleSearch = () => {
@@ -147,6 +183,7 @@ const SearchForm: FC = () => {
                 style={{ width: "300px" }}
                 value={searchValue}
                 onChange={handleChange}
+                onKeyDown={(e) => void handleSearchWithEnter(e)}
             />
             <button
                 type="button"
@@ -160,8 +197,10 @@ const SearchForm: FC = () => {
     );
 };
 
-const WeatherInfo: FC = () => {
-    const weather = useAppSelector(selectWeatherData);
+const WeatherInfo: FC<WeatherInfoProps> = ({ notFound }) => {
+    const weather = useAppSelector(selectWeather);
+    const user = useAppSelector(selectUser);
+    const dispatchUser = useAppDispatch();
     const [showForecast, setShowForecast] = useState<boolean>(false);
 
     const formattedDateTime = userFriendlyTime(weather?.location?.localtime);
@@ -177,19 +216,111 @@ const WeatherInfo: FC = () => {
         </div>
     );
 
+    const isLoggedIn = user?.user?.uid || false;
+
+    const currentCityIsSaved = user.user?.savedCities.includes(
+        weather.location.name
+    );
+
     const tabHandler = (tab: string) => {
         setShowForecast(tab === "forecast");
     };
+
+    useEffect(() => {
+        const fetchData = async () => {
+            if (user.user?.uid) {
+                const docRef = doc(db, "Users", user.user.uid);
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    dispatchUser(saveCity(docSnap.data().savedCities));
+                } else {
+                    console.log("No such document!");
+                }
+            }
+        };
+
+        fetchData();
+    }, [dispatchUser, user.user?.uid]);
+
+    const saveCityWeather = async () => {
+        try {
+            if (user.user?.uid) {
+                const docRef = doc(db, "Users", user.user.uid);
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    await updateDoc(docRef, {
+                        savedCities: arrayUnion(weather.location.name),
+                    });
+                    dispatchUser(
+                        saveCity([
+                            ...docSnap.data().savedCities,
+                            weather.location.name,
+                        ])
+                    );
+                } else {
+                    console.log("No such document!");
+                }
+            }
+        } catch (error) {
+            console.log(error);
+        }
+    };
+
+    const removeCityWeather = async () => {
+        try {
+            if (user.user?.uid) {
+                const docRef = doc(db, "Users", user.user.uid);
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    await updateDoc(docRef, {
+                        savedCities: arrayRemove(weather.location.name),
+                    });
+                    const updatedCities = docSnap
+                        .data()
+                        .savedCities.filter(
+                            (city: string) => city !== weather.location.name
+                        );
+                    dispatchUser(saveCity(updatedCities));
+                } else {
+                    console.log("No such document!");
+                }
+            }
+        } catch (error) {
+            console.log(error);
+        }
+    };
+
+    if (notFound) {
+        return <p className="text-white text-2xl ">City not found.</p>;
+    }
 
     if (weather.location.name === "") {
         return <p className="text-white text-2xl">Loading...</p>;
     }
 
     return (
-        <section className="rounded-xl p-8 w-3/5 text-white shadow-xl shadow-gray-950 bg-sky-900">
-            <h1 className="text-4xl text-center pb-4">
-                {weather?.location?.name}, {weather?.location?.country}
-            </h1>
+        <section className="rounded-xl p-8 text-white shadow-xl shadow-gray-950 bg-sky-900 w-4/6">
+            <div className="pb-4 flex justify-between items-end">
+                <h1 className="text-4xl text-center flex-1">
+                    {weather?.location?.name}, {weather?.location?.country}
+                </h1>
+                {isLoggedIn && currentCityIsSaved ? (
+                    <button
+                        className="font-bold hover:text-blue-400"
+                        onClick={removeCityWeather}
+                    >
+                        Remove
+                    </button>
+                ) : isLoggedIn ? (
+                    <button
+                        className="font-bold hover:text-blue-400"
+                        onClick={saveCityWeather}
+                    >
+                        Save
+                    </button>
+                ) : null}
+            </div>
+
             <div className="w-full flex justify-start items-center gap-4 border-b-2 pb-3 border-sky-700">
                 <div
                     className={`p-2 bg-sky-700 hover:bg-blue-700 rounded-md cursor-pointer ${
@@ -298,11 +429,14 @@ const WeatherInfo: FC = () => {
 
 const Public: FC = () => {
     const dispatchWeather = useAppDispatch();
-    const weather = useAppSelector(selectWeatherData);
+    const weather = useAppSelector(selectWeather);
+    const [notFound, setNotFound] = useState<boolean>(true);
 
-    const searchCity = weather?.location?.name || "Niš";
+    const searchCityValue = weather?.location?.name || "Niš";
     const searchUrlQuery =
-        import.meta.env.VITE_X_RAPIDAPI_Forecast_Url + searchCity + "&days=3";
+        import.meta.env.VITE_X_RAPIDAPI_Forecast_Url +
+        searchCityValue +
+        "&days=3";
 
     const [openAuthModal, setOpenAuthModal] = useState<boolean>(false);
     const [showLogin, setShowLogin] = useState<boolean>(false);
@@ -310,23 +444,27 @@ const Public: FC = () => {
 
     const dispatchUser = useAppDispatch();
     const user = useAppSelector(selectUser);
-
-    console.log(user);
+    const isLoggedIn = user?.user?.uid || false;
 
     useEffect(() => {
-        // Subscribe to authentication state changes
         const unsubscribe = subscribeToAuthState(
             (authUser) => {
-                // setIsLoading(false);
-                dispatchUser(setUser(authUser));
-                dispatchUser(setLoginStatus(!!authUser));
+                if (authUser && authUser.email && authUser.displayName) {
+                    dispatchUser(
+                        loginUser({
+                            email: authUser.email,
+                            uid: authUser.uid,
+                            displayName: authUser.displayName,
+                            savedCities: [],
+                        })
+                    );
+                }
             },
             (error) => {
                 console.error("Authentication error:", error);
             }
         );
 
-        // Cleanup the subscription when the component unmounts
         return () => {
             unsubscribe();
         };
@@ -363,6 +501,7 @@ const Public: FC = () => {
                 uid: response.user.uid,
                 displayName,
                 email,
+                savedCities: [],
             };
             await setDoc(doc(db, "Users", response.user.uid), DocumentObj);
             setOpenAuthModal(false);
@@ -407,6 +546,7 @@ const Public: FC = () => {
     const handleLogout = async (): Promise<void> => {
         try {
             await signOut(auth);
+            dispatchUser(logoutUser());
         } catch (error) {
             if (error instanceof Error) {
                 console.error(error);
@@ -414,11 +554,15 @@ const Public: FC = () => {
         }
     };
 
+    const showSavedCity = (city: string) => {
+        dispatchWeather(searchCity(city));
+    };
+
     return (
         <>
             {openAuthModal ? (
                 <div
-                    className="absolute h-full w-full top-0 left-0"
+                    className="absolute h-full w-full top-0 left-0 z-10"
                     style={{ background: "rgba(0,0,0,0.5" }}
                     onClick={backdropClick}
                 >
@@ -548,13 +692,14 @@ const Public: FC = () => {
             <ForecastDataFetcher
                 searchUrlQuery={searchUrlQuery}
                 dispatch={dispatchWeather}
+                setNotFound={setNotFound}
             />
             <div className="h-screen w-full dark:bg-gray-900">
                 <header>
                     <nav className="dark:bg-gray-800 flex justify-around items-center text-white py-5">
                         <h1 className="font-bold text-3xl">Weather Hub</h1>
                         <SearchForm />
-                        {user?.loginStatus ? (
+                        {isLoggedIn ? (
                             <div className="flex justify-center items-center gap-5">
                                 <p>Welcome, {user?.user?.displayName}</p>
                                 <button
@@ -578,14 +723,32 @@ const Public: FC = () => {
                         )}
                     </nav>
                 </header>
-                <section className="flex justify-center items-center mt-10 text-white">
-                    <p className="text-2xl">
-                        Sign up to save weather insights for your favorite
-                        cities.
-                    </p>
-                </section>
-                <main className="flex justify-center items-center mt-10">
-                    <WeatherInfo />
+                {!isLoggedIn ? (
+                    <section className="flex justify-center items-center mt-10 text-white">
+                        <p className="text-2xl">
+                            Sign up to save weather insights for your favorite
+                            cities.
+                        </p>
+                    </section>
+                ) : null}
+                <main className="flex justify-center items-center mt-10 relative">
+                    <WeatherInfo notFound={notFound} />
+                    {isLoggedIn ? (
+                        <div className="absolute right-5 bg-white text-gray-800 p-3 rounded-sm top-0">
+                            <h3 className="text-xl border-b-2 mb-3">
+                                Your cities
+                            </h3>
+                            {user.user?.savedCities.map((city) => (
+                                <p
+                                    key={city}
+                                    className="cursor-pointer hover:underline"
+                                    onClick={() => showSavedCity(city)}
+                                >
+                                    {city}
+                                </p>
+                            ))}
+                        </div>
+                    ) : null}
                 </main>
             </div>
         </>
