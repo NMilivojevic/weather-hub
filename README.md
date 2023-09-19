@@ -2,7 +2,7 @@
 
 -   TypeScript: for static typing
 -   React: framework of choice
--   Vite: development environment
+-   Vite: bundler/development environment
 -   Tailwind: styling
 -   Redux Toolkit: state management
 -   ESLint: linting
